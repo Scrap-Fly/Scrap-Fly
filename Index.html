@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrap and Fly</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #030712;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .hud-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 14px 18px;
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            min-width: 220px;
+        }
+
+        .hud-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+
+        .hud-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+
+        .stat-bar {
+            width: 100%;
+            height: 8px;
+            background: #1e293b;
+            border-radius: 4px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            background: #38bdf8;
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+
+        .fuel-fill {
+            background: #f59e0b;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 22px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            pointer-events: none;
+            backdrop-filter: blur(6px);
+            text-align: center;
+        }
+
+        #location-banner {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 12px 20px;
+            border-radius: 12px;
+            text-align: right;
+            backdrop-filter: blur(6px);
+        }
+
+        #planet-name {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #f1f5f9;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-overlay">
+        <div class="hud-card">
+            <div class="hud-title">Chatarra Recolectada (Scrap)</div>
+            <div class="hud-value" id="scrap-count">0</div>
+        </div>
+
+        <div class="hud-card">
+            <div class="hud-title">Nivel de Nave</div>
+            <div class="hud-value" id="ship-level">Nivel 1</div>
+            <div class="stat-bar"><div class="stat-fill" id="upgrade-bar"></div></div>
+        </div>
+
+        <div class="hud-card">
+            <div class="hud-title">Energía / Combustible</div>
+            <div class="stat-bar"><div class="stat-fill fuel-fill" id="fuel-bar"></div></div>
+        </div>
+    </div>
+
+    <div id="location-banner">
+        <div class="hud-title">Sector Actual</div>
+        <div id="planet-name">Espacio Profundo</div>
+    </div>
+
+    <div id="controls-hint">
+        <b>Moverse:</b> W/A/S/D o Flechas | <b>Impulso:</b> Shift | junta <b>Scrap</b> para mejorar y recarga energía cerca de los <b>Planetas</b>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const WORLD_SIZE = 7000;
+
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Nave del Jugador
+        const player = {
+            x: WORLD_SIZE / 2,
+            y: WORLD_SIZE / 2,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            baseSpeed: 0.2,
+            maxSpeed: 4,
+            friction: 0.985,
+            scrapCollected: 0,
+            level: 1,
+            nextUpgrade: 5,
+            fuel: 100,
+            maxFuel: 100
+        };
+
+        // Estrellas
+        const stars = [];
+        for (let i = 0; i < 900; i++) {
+            stars.push({
+                x: Math.random() * WORLD_SIZE,
+                y: Math.random() * WORLD_SIZE,
+                size: Math.random() * 2 + 0.5,
+                alpha: Math.random()
+            });
+        }
+
+        // Planetas del mapa
+        const planets = [
+            { x: WORLD_SIZE / 2 - 1200, y: WORLD_SIZE / 2 - 800, radius: 220, color: '#ef4444', name: 'Planeta Chatarra Pyros' },
+            { x: WORLD_SIZE / 2 + 1500, y: WORLD_SIZE / 2 - 1000, radius: 260, color: '#10b981', name: 'Planeta Botánico Gaia' },
+            { x: WORLD_SIZE / 2 + 1100, y: WORLD_SIZE / 2 + 1400, radius: 200, color: '#3b82f6', name: 'Planeta Oceánico Aquaria' },
+            { x: WORLD_SIZE / 2 - 1400, y: WORLD_SIZE / 2 + 1200, radius: 280, color: '#f59e0b', name: 'Planeta Gigante Aurelia' }
+        ];
+
+        // Chatarra (Scrap) dispersa
+        const scraps = [];
+        function spawnScraps(count) {
+            for (let i = 0; i < count; i++) {
+                scraps.push({
+                    x: Math.random() * (WORLD_SIZE - 200) + 100,
+                    y: Math.random() * (WORLD_SIZE - 200) + 100,
+                    size: 12,
+                    angle: Math.random() * Math.PI * 2,
+                    rotSpeed: (Math.random() - 0.5) * 0.04
+                });
+            }
+        }
+        spawnScraps(100);
+
+        function update() {
+            let moves = false;
+
+            // Movimiento
+            if ((keys['ArrowUp'] || keys['KeyW']) && player.fuel > 0) {
+                player.vx += Math.cos(player.angle) * player.baseSpeed;
+                player.vy += Math.sin(player.angle) * player.baseSpeed;
+                player.fuel -= 0.05;
+                moves = true;
+            }
+            if (keys['ArrowDown'] || keys['KeyS']) {
+                player.vx -= Math.cos(player.angle) * (player.baseSpeed * 0.5);
+                player.vy -= Math.sin(player.angle) * (player.baseSpeed * 0.5);
+            }
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                player.angle -= 0.055;
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                player.angle += 0.055;
+            }
+
+            // Fricción
+            player.vx *= player.friction;
+            player.vy *= player.friction;
+
+            // Velocidad máxima
+            const speed = Math.hypot(player.vx, player.vy);
+            const isBoosting = (keys['ShiftLeft'] || keys['ShiftRight']) && player.fuel > 0;
+            const currentMax = isBoosting ? player.maxSpeed * 1.5 : player.maxSpeed;
+
+            if (isBoosting && moves) {
+                player.fuel -= 0.1;
+            }
+
+            if (speed > currentMax) {
+                player.vx = (player.vx / speed) * currentMax;
+                player.vy = (player.vy / speed) * currentMax;
+            }
+
+            // Posición
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Bordes del mapa
+            player.x = Math.max(50, Math.min(WORLD_SIZE - 50, player.x));
+            player.y = Math.max(50, Math.min(WORLD_SIZE - 50, player.y));
+
+            // Rotar chatarra
+            scraps.forEach(s => s.angle += s.rotSpeed);
+
+            // Recoger Chatarra (Scrap)
+            for (let i = scraps.length - 1; i >= 0; i--) {
+                const dist = Math.hypot(player.x - scraps[i].x, player.y - scraps[i].y);
+                if (dist < 32) {
+                    scraps.splice(i, 1);
+                    player.scrapCollected++;
+
+                    // Progresión / Mejoras
+                    if (player.scrapCollected >= player.nextUpgrade) {
+                        player.level++;
+                        player.baseSpeed += 0.06;
+                        player.maxSpeed += 1.1;
+                        player.maxFuel += 20;
+                        player.fuel = player.maxFuel;
+                        player.nextUpgrade += player.level * 4;
+                    }
+                    updateUI();
+                }
+            }
+
+            // Detectar cercanía a Planetas y recargar combustible
+            let currentSector = 'Espacio Profundo';
+            planets.forEach(planet => {
+                const dist = Math.hypot(player.x - planet.x, player.y - planet.y);
+                if (dist < planet.radius + 180) {
+                    currentSector = planet.name;
+                    // Recarga de energía cerca de un planeta
+                    if (player.fuel < player.maxFuel) {
+                        player.fuel = Math.min(player.maxFuel, player.fuel + 0.4);
+                    }
+                }
+            });
+
+            document.getElementById('planet-name').innerText = currentSector;
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('scrap-count').innerText = player.scrapCollected;
+            document.getElementById('ship-level').innerText = `Nivel ${player.level}`;
+
+            const prevUpgradeGoal = player.nextUpgrade - (player.level * 4);
+            const progress = ((player.scrapCollected - prevUpgradeGoal) / (player.nextUpgrade - prevUpgradeGoal)) * 100;
+            document.getElementById('upgrade-bar').style.width = `${Math.min(100, Math.max(0, progress))}%`;
+
+            const fuelProgress = (player.fuel / player.maxFuel) * 100;
+            document.getElementById('fuel-bar').style.width = `${Math.max(0, fuelProgress)}%`;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2 - player.x, canvas.height / 2 - player.y);
+
+            // Fondo de Estrellas
+            ctx.fillStyle = '#ffffff';
+            stars.forEach(star => {
+                ctx.globalAlpha = 0.2 + Math.sin(Date.now() * 0.002 + star.x) * 0.3;
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            });
+            ctx.globalAlpha = 1;
+
+            // Planetas
+            planets.forEach(planet => {
+                const gradient = ctx.createRadialGradient(planet.x, planet.y, planet.radius * 0.8, planet.x, planet.y, planet.radius * 1.25);
+                gradient.addColorStop(0, planet.color);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(planet.x, planet.y, planet.radius * 1.25, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = planet.color;
+                ctx.beginPath();
+                ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Chatarra (Scrap)
+            scraps.forEach(s => {
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.angle);
+                ctx.fillStyle = '#f59e0b';
+                ctx.strokeStyle = '#fef08a';
+                ctx.lineWidth = 1.5;
+                ctx.fillRect(-s.size / 2, -s.size / 2, s.size, s.size);
+                ctx.strokeRect(-s.size / 2, -s.size / 2, s.size, s.size);
+                ctx.restore();
+            });
+
+            // Jugador (Nave Scrap)
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.angle);
+
+            // Propulsor
+            if ((keys['ArrowUp'] || keys['KeyW']) && player.fuel > 0) {
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.moveTo(-16, 0);
+                ctx.lineTo(-28 - Math.random() * 10, -6);
+                ctx.lineTo(-28 - Math.random() * 10, 6);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Diseño evolutivo según Nivel
+            ctx.fillStyle = player.level >= 3 ? '#38bdf8' : '#94a3b8';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(22, 0);
+            ctx.lineTo(-12, -12);
+            ctx.lineTo(-6, 0);
+            ctx.lineTo(-12, 12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Módulos extra según nivel
+            if (player.level >= 2) {
+                ctx.fillStyle = '#0284c7';
+                ctx.fillRect(-10, -18, 6, 36);
+            }
+
+            ctx.restore();
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        updateUI();
+        gameLoop();
+    </script>
+</body>
+</html>
