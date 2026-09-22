@@ -2,38 +2,370 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tierras errantes</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Odisea Espacial - Explorador de Naves</title>
 <style>
-:root{
-  --bg:#dfeaea; --glass:rgba(244,249,247,.74); --line:rgba(13,30,36,.2);
-  --text:#10262d; --dim:#48605f; --accent:#6d4be0; --accent-ink:#ffffff;
-  --bar:#2a9468; --track:rgba(13,30,36,.16);
-  box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);
-  padding-bottom:env(safe-area-inset-bottom,0px);
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0b1a20; --glass:rgba(11,26,32,.66); --line:rgba(232,241,238,.2);
-    --text:#e8f1ee; --dim:#a9bdb8; --accent:#b79cff; --accent-ink:#150b33;
-    --bar:#7fe0b0; --track:rgba(232,241,238,.18);
+  :root {
+    --accent: #00d2ff;
+    --glass: rgba(10, 15, 30, 0.75);
+    --line: rgba(0, 210, 255, 0.3);
   }
-}
-:root[data-theme="dark"]{
-  --bg:#0b1a20; --glass:rgba(11,26,32,.66); --line:rgba(232,241,238,.2);
-  --text:#e8f1ee; --dim:#a9bdb8; --accent:#b79cff; --accent-ink:#150b33;
-  --bar:#7fe0b0; --track:rgba(232,241,238,.18);
-}
-html{height:100%;background:var(--bg)}
-body{
-  margin:0;height:100%;position:relative;overflow:hidden;background:var(--bg);color:var(--text);
-  font-family:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
-  -webkit-user-select:none;user-select:none;touch-action:none;
-}
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #fff; }
+  #c { width: 100%; height: 100%; display: block; }
+
+  /* HUD */
+  .hud-panel {
+    position: absolute;
+    background: var(--glass);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+  #info { top: 16px; left: 16px; min-width: 240px; }
+  #info h1 { font-size: 18px; color: var(--accent); margin-bottom: 6px; letter-spacing: 1px; }
+  .stat { font-size: 13px; color: #a0c0d0; margin-top: 4px; display: flex; justify-content: space-between; }
+  .stat span { color: #fff; font-weight: bold; }
+
+  #controls-info { top: 16px; right: 16px; font-size: 12px; color: #a0c0d0; line-height: 1.5; }
+  kbd { background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; color: #fff; }
+
+  #toast {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--accent); color: #000; font-weight: bold; padding: 10px 24px;
+    border-radius: 20px; opacity: 0; transition: all 0.3s ease; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Pantalla de Inicio */
+  #overlay {
+    position: absolute; inset: 0; background: rgba(5, 8, 20, 0.85);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    backdrop-filter: blur(10px); z-index: 10;
+  }
+  #overlay h1 { font-size: 48px; color: var(--accent); text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; text-shadow: 0 0 20px rgba(0,210,255,0.5); }
+  #overlay p { font-size: 16px; color: #a0c0d0; max-width: 500px; text-align: center; margin-bottom: 24px; line-height: 1.6; }
+  .btn {
+    background: var(--accent); color: #000; border: none; padding: 14px 32px;
+    font-size: 18px; font-weight: bold; border-radius: 30px; cursor: pointer;
+    transition: all 0.2s; box-shadow: 0 0 15px rgba(0,210,255,0.4);
+  }
+  .btn:hover { transform: scale(1.05); box-shadow: 0 0 25px rgba(0,210,255,0.8); }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="hud-panel" id="info">
+    <h1>NAVE EXPLORADORA</h1>
+    <div class="stat">Chatarra Recolectada: <span id="parts-val">0</span></div>
+    <div class="stat">Velocidad Máxima: <span id="speed-val">100 km/h</span></div>
+    <div class="stat">Nivel de Motor: <span id="level-val">1</span></div>
+    <div class="stat">Ubicación: <span id="loc-val">Espacio Profundo</span></div>
+  </div>
+
+  <div class="hud-panel" id="controls-info">
+    <div><kbd>W</kbd> / <kbd>S</kbd> : Acelerar / Frenar</div>
+    <div><kbd>A</kbd> / <kbd>D</kbd> : Guiñada (Izquierda/Derecha)</div>
+    <div><kbd>↑</kbd> / <kbd>↓</kbd> : Pich (Inclinación arriba/abajo)</div>
+    <div><kbd>Shift</kbd> : Turbo Boost</div>
+  </div>
+
+  <div id="toast">¡Chatarra encontrada!</div>
+</div>
+
+<div id="overlay">
+  <h1>Odisea Espacial</h1>
+  <p>Explora el cosmos, viaja entre planetas y encuentra piezas de chatarra con diferentes rarezas para mejorar el motor de tu nave.</p>
+  <button class="btn" id="start-btn">Despegar</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // --- ESCENA Y CONFIGURACIÓN ---
+  const canvas = document.getElementById('c');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x02040a, 0.0003);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
+
+  // --- LUCES ---
+  const ambientLight = new THREE.AmbientLight(0x334466, 1.5);
+  scene.add(ambientLight);
+
+  const sunLight = new THREE.DirectionalLight(0xffffff, 2);
+  sunLight.position.set(500, 200, 300);
+  scene.add(sunLight);
+
+  // --- FONDO DE ESTRELLAS ---
+  const starsGeo = new THREE.BufferGeometry();
+  const starsCount = 4000;
+  const starPositions = new Float32Array(starsCount * 3);
+  for (let i = 0; i < starsCount * 3; i++) {
+    starPositions[i] = (Math.random() - 0.5) * 8000;
+  }
+  starsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5 });
+  const starField = new THREE.Points(starsGeo, starsMat);
+  scene.add(starField);
+
+  // --- PLANETAS ---
+  const planets = [];
+  const planetData = [
+    { name: 'Aethel (Volcánico)', color: 0xff4500, radius: 180, pos: [800, 100, -1200] },
+    { name: 'Zephyrus (Gaseoso)', color: 0x00bfff, radius: 260, pos: [-1400, -200, -800] },
+    { name: 'Verdant (Habitable)', color: 0x2e8b57, radius: 150, pos: [1200, 300, 1000] },
+    { name: 'Krypton (Hielo)', color: 0xe0ffff, radius: 120, pos: [-600, 400, 1400] }
+  ];
+
+  planetData.forEach(data => {
+    const geo = new THREE.SphereGeometry(data.radius, 32, 32);
+    const mat = new THREE.MeshStandardMaterial({
+      color: data.color,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    const planet = new THREE.Mesh(geo, mat);
+    planet.position.set(...data.pos);
+    scene.add(planet);
+
+    if (data.name.includes('Gaseoso')) {
+      const ringGeo = new THREE.RingGeometry(data.radius + 40, data.radius + 120, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x0088cc, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = Math.PI / 3;
+      planet.add(ring);
+    }
+
+    planets.push({ mesh: planet, name: data.name, radius: data.radius });
+  });
+
+  // --- NAVE DEL JUGADOR ---
+  const shipGroup = new THREE.Group();
+
+  const bodyGeo = new THREE.ConeGeometry(1.2, 5, 6);
+  bodyGeo.rotateX(Math.PI / 2);
+  const shipMat = new THREE.MeshStandardMaterial({ color: 0xdcdcdc, metalness: 0.8, roughness: 0.2 });
+  const body = new THREE.Mesh(bodyGeo, shipMat);
+  shipGroup.add(body);
+
+  const wingGeo = new THREE.BoxGeometry(4.5, 0.1, 1.8);
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x00d2ff, metalness: 0.5, roughness: 0.3 });
+  const wings = new THREE.Mesh(wingGeo, wingMat);
+  wings.position.set(0, 0, 0.5);
+  shipGroup.add(wings);
+
+  const engineGeo = new THREE.CylinderGeometry(0.5, 0.7, 0.8, 8);
+  engineGeo.rotateX(Math.PI / 2);
+  const engineMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+  const engine = new THREE.Mesh(engineGeo, engineMat);
+  engine.position.set(0, 0, 2.4);
+  shipGroup.add(engine);
+
+  scene.add(shipGroup);
+
+  // --- SISTEMA DE CHATARRA CON RAREZAS ---
+  const parts = [];
+  
+  // Definición de tipos de chatarra
+  const SCRAP_TYPES = [
+    { name: 'Común', color: 0x888888, emissive: 0x222222, speedBoost: 3, weight: 60, scale: 1.0 },       // 60% probabilidad
+    { name: 'Poco Común', color: 0x00ff44, emissive: 0x004411, speedBoost: 6, weight: 25, scale: 1.2 },  // 25% probabilidad
+    { name: 'Rara', color: 0x0088ff, emissive: 0x002266, speedBoost: 12, weight: 11, scale: 1.4 },        // 11% probabilidad
+    { name: 'Épica', color: 0xa000ff, emissive: 0x400066, speedBoost: 25, weight: 4, scale: 1.7 }         // 4% probabilidad
+  ];
+
+  function getRandomScrapType() {
+    const totalWeight = SCRAP_TYPES.reduce((sum, t) => sum + t.weight, 0);
+    let rand = Math.random() * totalWeight;
+    for (const type of SCRAP_TYPES) {
+      if (rand < type.weight) return type;
+      rand -= type.weight;
+    }
+    return SCRAP_TYPES[0];
+  }
+
+  // Crear la geometría irregular tipo "chatarra"
+  function createScrapMesh(typeData) {
+    const geo = new THREE.DodecahedronGeometry(1.2, 1);
+    
+    // Deformar vértices para dar aspecto asimétrico de chatarra/metal
+    const posAttr = geo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      posAttr.setX(i, posAttr.getX(i) + (Math.random() - 0.5) * 0.4);
+      posAttr.setY(i, posAttr.getY(i) + (Math.random() - 0.5) * 0.4);
+      posAttr.setZ(i, posAttr.getZ(i) + (Math.random() - 0.5) * 0.4);
+    }
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: typeData.color,
+      emissive: typeData.emissive,
+      emissiveIntensity: 0.8,
+      metalness: 0.9,
+      roughness: 0.4
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.scale.setScalar(typeData.scale);
+    return mesh;
+  }
+
+  // Reducido de 60 a solo 20 piezas dispersas por el mapa
+  function spawnParts() {
+    for (let i = 0; i < 20; i++) {
+      const typeData = getRandomScrapType();
+      const scrapMesh = createScrapMesh(typeData);
+      
+      scrapMesh.position.set(
+        (Math.random() - 0.5) * 4000,
+        (Math.random() - 0.5) * 2000,
+        (Math.random() - 0.5) * 4000
+      );
+
+      // Velocidades de rotación aleatorias para cada pieza
+      scrapMesh.userData = {
+        typeData,
+        rotSpeedX: (Math.random() - 0.5) * 1.5,
+        rotSpeedY: (Math.random() - 0.5) * 1.5
+      };
+
+      scene.add(scrapMesh);
+      parts.push(scrapMesh);
+    }
+  }
+  spawnParts();
+
+  // --- ESTADO DEL JUGADOR Y FÍSICAS ---
+  const player = {
+    speed: 0,
+    maxSpeed: 40,
+    acceleration: 25,
+    rotSpeed: 1.5,
+    partsCollected: 0,
+    level: 1,
+    turbo: 1
+  };
+
+  const keys = {};
+  window.addEventListener('keydown', e => keys[e.code] = true);
+  window.addEventListener('keyup', e => keys[e.code] = false);
+
+  // --- INTERFAZ DE USUARIO ---
+  function showToast(msg, colorHex) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.background = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : 'var(--accent)';
+    toast.style.color = (colorHex === 0x888888 || colorHex === 0x00ff44) ? '#000' : '#fff';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  function updateHUD() {
+    document.getElementById('parts-val').textContent = player.partsCollected;
+    document.getElementById('speed-val').textContent = Math.round(player.maxSpeed * 2.5) + ' km/h';
+    document.getElementById('level-val').textContent = player.level;
+  }
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    document.getElementById('overlay').style.display = 'none';
+  });
+
+  // --- BUCLE PRINCIPAL (GAMELOOP) ---
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+
+    // Rotación de planetas y chatarra
+    planets.forEach(p => p.mesh.rotation.y += 0.05 * dt);
+    parts.forEach(p => {
+      p.rotation.x += p.userData.rotSpeedX * dt;
+      p.rotation.y += p.userData.rotSpeedY * dt;
+    });
+
+    // --- CONTROLES DE LA NAVE ---
+    player.turbo = keys['ShiftLeft'] || keys['ShiftRight'] ? 1.8 : 1.0;
+
+    const targetMaxSpeed = player.maxSpeed * player.turbo;
+    if (keys['KeyW']) {
+      player.speed = Math.min(player.speed + player.acceleration * dt, targetMaxSpeed);
+    } else if (keys['KeyS']) {
+      player.speed = Math.max(player.speed - player.acceleration * 1.5 * dt, -15);
+    } else {
+      player.speed *= 0.98;
+    }
+
+    if (keys['ArrowUp']) shipGroup.rotateX(-player.rotSpeed * dt);
+    if (keys['ArrowDown']) shipGroup.rotateX(player.rotSpeed * dt);
+    if (keys['KeyA']) shipGroup.rotateY(player.rotSpeed * dt);
+    if (keys['KeyD']) shipGroup.rotateY(-player.rotSpeed * dt);
+
+    shipGroup.translateZ(-player.speed * dt);
+
+    // --- CÁMARA TERCERA PERSONA ---
+    const camOffset = new THREE.Vector3(0, 3, 12);
+    camOffset.applyQuaternion(shipGroup.quaternion);
+    camera.position.copy(shipGroup.position).add(camOffset);
+    camera.lookAt(shipGroup.position.clone().add(new THREE.Vector3(0, 0, -10).applyQuaternion(shipGroup.quaternion)));
+
+    // --- COLISIÓN / RECOLECCIÓN DE CHATARRA ---
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      if (shipGroup.position.distanceTo(p.position) < 5.0) {
+        const scrapData = p.userData.typeData;
+        
+        scene.remove(p);
+        parts.splice(i, 1);
+        
+        player.partsCollected++;
+        player.maxSpeed += scrapData.speedBoost;
+        
+        if (player.partsCollected % 4 === 0) {
+          player.level++;
+        }
+
+        showToast(`Chatarra ${scrapData.name}! +${scrapData.speedBoost * 2.5} km/h máx`, scrapData.color);
+        updateHUD();
+      }
+    }
+
+    // --- DETECCIÓN DE PLANETA CERCANO ---
+    let currentLoc = 'Espacio Profundo';
+    planets.forEach(p => {
+      const dist = shipGroup.position.distanceTo(p.mesh.position);
+      if (dist < p.radius + 300) {
+        currentLoc = `Órbita de ${p.name}`;
+      }
+    });
+    document.getElementById('loc-val').textContent = currentLoc;
+
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+})();
+</script>
+</body>
+</html>
 [hidden]{display:none!important}
 #c{display:block;width:100%;height:100%}
 
