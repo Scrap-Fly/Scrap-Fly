@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrap and Fly</title>
+    <title>Scrap and Fly - Mundo Abierto</title>
     <style>
         * {
             box-sizing: border-box;
@@ -41,7 +41,7 @@
             border-radius: 12px;
             backdrop-filter: blur(8px);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-            min-width: 220px;
+            min-width: 240px;
         }
 
         .hud-title {
@@ -74,10 +74,6 @@
             transition: width 0.2s ease;
         }
 
-        .fuel-fill {
-            background: #f59e0b;
-        }
-
         #controls-hint {
             position: absolute;
             bottom: 20px;
@@ -85,13 +81,29 @@
             transform: translateX(-50%);
             background: rgba(15, 23, 42, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 10px 22px;
+            padding: 12px 24px;
             border-radius: 20px;
             font-size: 0.85rem;
             color: #cbd5e1;
             pointer-events: none;
             backdrop-filter: blur(6px);
             text-align: center;
+        }
+
+        #action-prompt {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(56, 189, 248, 0.9);
+            color: #030712;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1rem;
+            display: none;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.6);
+            pointer-events: none;
         }
 
         #location-banner {
@@ -119,29 +131,31 @@
 
     <div id="ui-overlay">
         <div class="hud-card">
-            <div class="hud-title">Chatarra Recolectada (Scrap)</div>
+            <div class="hud-title">Modo Actual</div>
+            <div class="hud-value" id="mode-text">A pie (Astronauta)</div>
+        </div>
+
+        <div class="hud-card">
+            <div class="hud-title">Piezas de Chatarra</div>
             <div class="hud-value" id="scrap-count">0</div>
         </div>
 
         <div class="hud-card">
             <div class="hud-title">Nivel de Nave</div>
-            <div class="hud-value" id="ship-level">Nivel 1</div>
+            <div class="hud-value" id="ship-level">Nivel 1 (Motor Básico)</div>
             <div class="stat-bar"><div class="stat-fill" id="upgrade-bar"></div></div>
-        </div>
-
-        <div class="hud-card">
-            <div class="hud-title">Energía / Combustible</div>
-            <div class="stat-bar"><div class="stat-fill fuel-fill" id="fuel-bar"></div></div>
         </div>
     </div>
 
     <div id="location-banner">
-        <div class="hud-title">Sector Actual</div>
-        <div id="planet-name">Espacio Profundo</div>
+        <div class="hud-title">Ubicación</div>
+        <div id="planet-name">Planeta Inicial</div>
     </div>
 
+    <div id="action-prompt" id="prompt">Presiona E para entrar/salir de la nave</div>
+
     <div id="controls-hint">
-        <b>Moverse:</b> W/A/S/D o Flechas | <b>Impulso:</b> Shift | junta <b>Scrap</b> para mejorar y recarga energía cerca de los <b>Planetas</b>
+        <b>Moverse:</b> W/A/S/D o Flechas | <b>Entrar/Salir de Nave:</b> E | Busca piezas a pie para mejorar tu nave e ir a planetas lejanos.
     </div>
 
     <script>
@@ -155,243 +169,243 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        const WORLD_SIZE = 7000;
+        const WORLD_SIZE = 8000;
 
         const keys = {};
-        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            if (e.code === 'KeyE') toggleMount();
+        });
         window.addEventListener('keyup', e => keys[e.code] = false);
 
-        // Nave del Jugador
+        // Estado del juego
+        let inShip = false;
+
+        // Jugador (Astronauta)
         const player = {
+            x: WORLD_SIZE / 2 + 50,
+            y: WORLD_SIZE / 2,
+            vx: 0,
+            vy: 0,
+            speed: 3,
+            size: 10,
+            scrap: 0
+        };
+
+        // Nave
+        const ship = {
             x: WORLD_SIZE / 2,
             y: WORLD_SIZE / 2,
             vx: 0,
             vy: 0,
             angle: 0,
-            baseSpeed: 0.2,
-            maxSpeed: 4,
-            friction: 0.985,
-            scrapCollected: 0,
+            baseSpeed: 0.25,
+            maxSpeed: 5,
+            friction: 0.98,
             level: 1,
-            nextUpgrade: 5,
-            fuel: 100,
-            maxFuel: 100
+            nextUpgrade: 5
         };
 
         // Estrellas
         const stars = [];
-        for (let i = 0; i < 900; i++) {
+        for (let i = 0; i < 1000; i++) {
             stars.push({
                 x: Math.random() * WORLD_SIZE,
                 y: Math.random() * WORLD_SIZE,
-                size: Math.random() * 2 + 0.5,
-                alpha: Math.random()
+                size: Math.random() * 2 + 0.5
             });
         }
 
-        // Planetas del mapa
+        // Planetas con requerimientos de nivel de nave
         const planets = [
-            { x: WORLD_SIZE / 2 - 1200, y: WORLD_SIZE / 2 - 800, radius: 220, color: '#ef4444', name: 'Planeta Chatarra Pyros' },
-            { x: WORLD_SIZE / 2 + 1500, y: WORLD_SIZE / 2 - 1000, radius: 260, color: '#10b981', name: 'Planeta Botánico Gaia' },
-            { x: WORLD_SIZE / 2 + 1100, y: WORLD_SIZE / 2 + 1400, radius: 200, color: '#3b82f6', name: 'Planeta Oceánico Aquaria' },
-            { x: WORLD_SIZE / 2 - 1400, y: WORLD_SIZE / 2 + 1200, radius: 280, color: '#f59e0b', name: 'Planeta Gigante Aurelia' }
+            { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, radius: 300, color: '#3b82f6', name: 'Planeta Inicial (Astra)', reqLevel: 1 },
+            { x: WORLD_SIZE / 2 - 2000, y: WORLD_SIZE / 2 - 1800, radius: 250, color: '#ef4444', name: 'Planeta Rojo (Pyros)', reqLevel: 2 },
+            { x: WORLD_SIZE / 2 + 2500, y: WORLD_SIZE / 2 - 2000, radius: 320, color: '#10b981', name: 'Planeta Selvático (Gaia)', reqLevel: 3 },
+            { x: WORLD_SIZE / 2 + 2000, y: WORLD_SIZE / 2 + 2200, radius: 280, color: '#f59e0b', name: 'Planeta Dorado (Aurelia)', reqLevel: 4 }
         ];
 
-        // Chatarra (Scrap) dispersa
+        // Piezas de chatarra
         const scraps = [];
-        function spawnScraps(count) {
+        function spawnScrap(count) {
             for (let i = 0; i < count; i++) {
                 scraps.push({
-                    x: Math.random() * (WORLD_SIZE - 200) + 100,
-                    y: Math.random() * (WORLD_SIZE - 200) + 100,
-                    size: 12,
-                    angle: Math.random() * Math.PI * 2,
-                    rotSpeed: (Math.random() - 0.5) * 0.04
+                    x: Math.random() * (WORLD_SIZE - 400) + 200,
+                    y: Math.random() * (WORLD_SIZE - 400) + 200,
+                    size: 8,
+                    value: 1
                 });
             }
         }
-        spawnScraps(100);
+        spawnScrap(150);
+
+        function toggleMount() {
+            const dist = Math.hypot(player.x - ship.x, player.y - ship.y);
+            if (!inShip && dist < 60) {
+                inShip = true;
+            } else if (inShip) {
+                inShip = false;
+                player.x = ship.x + 30;
+                player.y = ship.y + 30;
+            }
+        }
 
         function update() {
-            let moves = false;
+            const actionPrompt = document.getElementById('action-prompt');
 
-            // Movimiento
-            if ((keys['ArrowUp'] || keys['KeyW']) && player.fuel > 0) {
-                player.vx += Math.cos(player.angle) * player.baseSpeed;
-                player.vy += Math.sin(player.angle) * player.baseSpeed;
-                player.fuel -= 0.05;
-                moves = true;
+            if (inShip) {
+                // Controlar Nave
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    ship.vx += Math.cos(ship.angle) * ship.baseSpeed;
+                    ship.vy += Math.sin(ship.angle) * ship.baseSpeed;
+                }
+                if (keys['ArrowDown'] || keys['KeyS']) {
+                    ship.vx -= Math.cos(ship.angle) * (ship.baseSpeed * 0.5);
+                    ship.vy -= Math.sin(ship.angle) * (ship.baseSpeed * 0.5);
+                }
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    ship.angle -= 0.05;
+                }
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    ship.angle += 0.05;
+                }
+
+                ship.vx *= ship.friction;
+                ship.vy *= ship.friction;
+
+                ship.x += ship.vx;
+                ship.y += ship.vy;
+
+                // El jugador sigue a la nave cuando está dentro
+                player.x = ship.x;
+                player.y = ship.y;
+
+                actionPrompt.style.display = 'none';
+            } else {
+                // Controlar Jugador a pie
+                player.vx = 0;
+                player.vy = 0;
+
+                if (keys['ArrowUp'] || keys['KeyW']) player.vy = -player.speed;
+                if (keys['ArrowDown'] || keys['KeyS']) player.vy = player.speed;
+                if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -player.speed;
+                if (keys['ArrowRight'] || keys['KeyD']) player.vx = player.speed;
+
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // Prompt para subir a la nave
+                const distToShip = Math.hypot(player.x - ship.x, player.y - ship.y);
+                if (distToShip < 60) {
+                    actionPrompt.style.display = 'block';
+                    actionPrompt.innerText = 'Presiona E para subir a la Nave';
+                } else {
+                    actionPrompt.style.display = 'none';
+                }
             }
-            if (keys['ArrowDown'] || keys['KeyS']) {
-                player.vx -= Math.cos(player.angle) * (player.baseSpeed * 0.5);
-                player.vy -= Math.sin(player.angle) * (player.baseSpeed * 0.5);
-            }
-            if (keys['ArrowLeft'] || keys['KeyA']) {
-                player.angle -= 0.055;
-            }
-            if (keys['ArrowRight'] || keys['KeyD']) {
-                player.angle += 0.055;
-            }
 
-            // Fricción
-            player.vx *= player.friction;
-            player.vy *= player.friction;
+            // Recolectar Chatarra (tanto a pie como en nave)
+            const targetX = inShip ? ship.x : player.x;
+            const targetY = inShip ? ship.y : player.y;
+            const pickupRadius = inShip ? 35 : 20;
 
-            // Velocidad máxima
-            const speed = Math.hypot(player.vx, player.vy);
-            const isBoosting = (keys['ShiftLeft'] || keys['ShiftRight']) && player.fuel > 0;
-            const currentMax = isBoosting ? player.maxSpeed * 1.5 : player.maxSpeed;
-
-            if (isBoosting && moves) {
-                player.fuel -= 0.1;
-            }
-
-            if (speed > currentMax) {
-                player.vx = (player.vx / speed) * currentMax;
-                player.vy = (player.vy / speed) * currentMax;
-            }
-
-            // Posición
-            player.x += player.vx;
-            player.y += player.vy;
-
-            // Bordes del mapa
-            player.x = Math.max(50, Math.min(WORLD_SIZE - 50, player.x));
-            player.y = Math.max(50, Math.min(WORLD_SIZE - 50, player.y));
-
-            // Rotar chatarra
-            scraps.forEach(s => s.angle += s.rotSpeed);
-
-            // Recoger Chatarra (Scrap)
             for (let i = scraps.length - 1; i >= 0; i--) {
-                const dist = Math.hypot(player.x - scraps[i].x, player.y - scraps[i].y);
-                if (dist < 32) {
+                const dist = Math.hypot(targetX - scraps[i].x, targetY - scraps[i].y);
+                if (dist < pickupRadius) {
                     scraps.splice(i, 1);
-                    player.scrapCollected++;
+                    player.scrap++;
 
-                    // Progresión / Mejoras
-                    if (player.scrapCollected >= player.nextUpgrade) {
-                        player.level++;
-                        player.baseSpeed += 0.06;
-                        player.maxSpeed += 1.1;
-                        player.maxFuel += 20;
-                        player.fuel = player.maxFuel;
-                        player.nextUpgrade += player.level * 4;
+                    // Subir nivel de nave si hay suficientes piezas
+                    if (player.scrap >= ship.nextUpgrade) {
+                        ship.level++;
+                        ship.baseSpeed += 0.08;
+                        ship.maxSpeed += 1.5;
+                        ship.nextUpgrade += ship.level * 5;
                     }
                     updateUI();
                 }
             }
 
-            // Detectar cercanía a Planetas y recargar combustible
-            let currentSector = 'Espacio Profundo';
-            planets.forEach(planet => {
-                const dist = Math.hypot(player.x - planet.x, player.y - planet.y);
-                if (dist < planet.radius + 180) {
-                    currentSector = planet.name;
-                    // Recarga de energía cerca de un planeta
-                    if (player.fuel < player.maxFuel) {
-                        player.fuel = Math.min(player.maxFuel, player.fuel + 0.4);
+            // Detectar planeta actual
+            let currentLoc = 'Espacio Profundo';
+            planets.forEach(p => {
+                const dist = Math.hypot(targetX - p.x, targetY - p.y);
+                if (dist < p.radius + 100) {
+                    if (ship.level >= p.reqLevel) {
+                        currentLoc = p.name;
+                    } else {
+                        currentLoc = `${p.name} (Requiere Nave Nivel ${p.reqLevel})`;
                     }
                 }
             });
+            document.getElementById('planet-name').innerText = currentLoc;
 
-            document.getElementById('planet-name').innerText = currentSector;
             updateUI();
         }
 
         function updateUI() {
-            document.getElementById('scrap-count').innerText = player.scrapCollected;
-            document.getElementById('ship-level').innerText = `Nivel ${player.level}`;
+            document.getElementById('mode-text').innerText = inShip ? 'En Nave' : 'A pie (Astronauta)';
+            document.getElementById('scrap-count').innerText = player.scrap;
+            document.getElementById('ship-level').innerText = `Nivel ${ship.level}`;
 
-            const prevUpgradeGoal = player.nextUpgrade - (player.level * 4);
-            const progress = ((player.scrapCollected - prevUpgradeGoal) / (player.nextUpgrade - prevUpgradeGoal)) * 100;
+            const prevGoal = ship.nextUpgrade - (ship.level * 5);
+            const progress = ((player.scrap - prevGoal) / (ship.nextUpgrade - prevGoal)) * 100;
             document.getElementById('upgrade-bar').style.width = `${Math.min(100, Math.max(0, progress))}%`;
-
-            const fuelProgress = (player.fuel / player.maxFuel) * 100;
-            document.getElementById('fuel-bar').style.width = `${Math.max(0, fuelProgress)}%`;
         }
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            ctx.save();
-            ctx.translate(canvas.width / 2 - player.x, canvas.height / 2 - player.y);
+            const camX = inShip ? ship.x : player.x;
+            const camY = inShip ? ship.y : player.y;
 
-            // Fondo de Estrellas
+            ctx.save();
+            ctx.translate(canvas.width / 2 - camX, canvas.height / 2 - camY);
+
+            // Fondo Estrellas
             ctx.fillStyle = '#ffffff';
-            stars.forEach(star => {
-                ctx.globalAlpha = 0.2 + Math.sin(Date.now() * 0.002 + star.x) * 0.3;
-                ctx.fillRect(star.x, star.y, star.size, star.size);
-            });
-            ctx.globalAlpha = 1;
+            stars.forEach(s => ctx.fillRect(s.x, s.y, s.size, s.size));
 
             // Planetas
-            planets.forEach(planet => {
-                const gradient = ctx.createRadialGradient(planet.x, planet.y, planet.radius * 0.8, planet.x, planet.y, planet.radius * 1.25);
-                gradient.addColorStop(0, planet.color);
-                gradient.addColorStop(1, 'transparent');
-
-                ctx.fillStyle = gradient;
+            planets.forEach(p => {
+                ctx.fillStyle = p.color;
                 ctx.beginPath();
-                ctx.arc(planet.x, planet.y, planet.radius * 1.25, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = planet.color;
-                ctx.beginPath();
-                ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 ctx.fill();
             });
 
-            // Chatarra (Scrap)
+            // Chatarra
+            ctx.fillStyle = '#f59e0b';
             scraps.forEach(s => {
-                ctx.save();
-                ctx.translate(s.x, s.y);
-                ctx.rotate(s.angle);
-                ctx.fillStyle = '#f59e0b';
-                ctx.strokeStyle = '#fef08a';
-                ctx.lineWidth = 1.5;
-                ctx.fillRect(-s.size / 2, -s.size / 2, s.size, s.size);
-                ctx.strokeRect(-s.size / 2, -s.size / 2, s.size, s.size);
-                ctx.restore();
+                ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
             });
 
-            // Jugador (Nave Scrap)
+            // Dibujar Nave
             ctx.save();
-            ctx.translate(player.x, player.y);
-            ctx.rotate(player.angle);
-
-            // Propulsor
-            if ((keys['ArrowUp'] || keys['KeyW']) && player.fuel > 0) {
-                ctx.fillStyle = '#38bdf8';
-                ctx.beginPath();
-                ctx.moveTo(-16, 0);
-                ctx.lineTo(-28 - Math.random() * 10, -6);
-                ctx.lineTo(-28 - Math.random() * 10, 6);
-                ctx.closePath();
-                ctx.fill();
-            }
-
-            // Diseño evolutivo según Nivel
-            ctx.fillStyle = player.level >= 3 ? '#38bdf8' : '#94a3b8';
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
-
+            ctx.translate(ship.x, ship.y);
+            ctx.rotate(ship.angle);
+            ctx.fillStyle = ship.level >= 2 ? '#38bdf8' : '#64748b';
             ctx.beginPath();
-            ctx.moveTo(22, 0);
-            ctx.lineTo(-12, -12);
-            ctx.lineTo(-6, 0);
-            ctx.lineTo(-12, 12);
+            ctx.moveTo(20, 0);
+            ctx.lineTo(-12, -10);
+            ctx.lineTo(-12, 10);
             ctx.closePath();
             ctx.fill();
-            ctx.stroke();
+            ctx.restore();
 
-            // Módulos extra según nivel
-            if (player.level >= 2) {
-                ctx.fillStyle = '#0284c7';
-                ctx.fillRect(-10, -18, 6, 36);
+            // Dibujar Jugador (si está fuera de la nave)
+            if (!inShip) {
+                ctx.fillStyle = '#f1f5f9';
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Casco astronauta
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(player.x + 2, player.y - 1, 4, 0, Math.PI * 2);
+                ctx.fill();
             }
 
-            ctx.restore();
             ctx.restore();
         }
 
